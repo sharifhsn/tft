@@ -272,6 +272,7 @@ enum Screen {
 enum Message {
     ClickedChampion(String),
     ClickedItem(Item),
+    ClickedItemRemove(Item),
     ClickedSave,
 }
 
@@ -401,6 +402,19 @@ impl Sandbox for Model {
                     champ.items.push(item);
                 }
             }
+            Message::ClickedItemRemove(item) => {
+                if let Some(ref champ) = self.focused_champion {
+                    println!("{} got added to {}", item, champ);
+                    let champ = self
+                        .champs
+                        .iter_mut()
+                        .find(|champ_state| &champ_state.champ.name == champ)
+                        .unwrap();
+                    if let Some(index) = champ.items.iter().position(|x| x.name == item.name) {
+                        champ.items.remove(index);
+                    }
+                }
+            }
             Message::ClickedSave => {
                 let data_dir = DATA_DIR.get().unwrap();
                 let s = serde_json::to_string(&self.champs).unwrap();
@@ -410,8 +424,7 @@ impl Sandbox for Model {
     }
 
     fn view(&self) -> Element<Message> {
-        let champs = self.champs.clone();
-        let chunks = champs.into_iter().chunks(3);
+        let chunks = self.champs.clone().into_iter().chunks(3);
         let mut rows = vec![];
         // let mut rows = column!(row!(Image::new(image::Handle::default())));
         for chunk in &chunks {
@@ -421,7 +434,7 @@ impl Sandbox for Model {
                     column!(
                         Image::new(a.champ.square_icon.handle.clone()),
                         button(text(a.champ.name.clone()))
-                            .on_press(Message::ClickedChampion(a.champ.name.clone()))
+                            .on_press(Message::ClickedChampion(a.champ.name))
                     )
                     .into()
                 })
@@ -429,55 +442,21 @@ impl Sandbox for Model {
         }
         let champion_col = rows.into_iter().fold(column!(), |col, row| col.push(row));
 
-        let item_chunks = self.items.chunks_exact(3);
+        let item_chunks = self.items.clone().into_iter().chunks(3);
         let mut item_rows = vec![];
-        // let mut rows = column!(row!(Image::new(image::Handle::default())));
-        for item_slice in item_chunks.clone() {
-            item_rows.push(row!(
-                column!(
-                    Image::new(item_slice[0].icon.handle.clone()),
-                    button(text(item_slice[0].name.clone()))
-                        .on_press(Message::ClickedItem(item_slice[0].clone()))
-                ),
-                column!(
-                    Image::new(item_slice[1].icon.handle.clone()),
-                    button(text(item_slice[1].name.clone()))
-                        .on_press(Message::ClickedItem(item_slice[1].clone()))
-                ),
-                column!(
-                    Image::new(item_slice[2].icon.handle.clone()),
-                    button(text(item_slice[2].name.clone()))
-                        .on_press(Message::ClickedItem(item_slice[2].clone()))
-                ),
-            ));
+        for item_chunk in &item_chunks {
+            item_rows.push(row(item_chunk
+                .into_iter()
+                .map(|a| {
+                    column!(
+                        Image::new(a.icon.handle.clone()),
+                        button(text(a.name.clone())).on_press(Message::ClickedItem(a))
+                    )
+                    .into()
+                })
+                .collect::<Vec<_>>()))
         }
 
-        let remainder: &[Item] = item_chunks.remainder();
-        match remainder.len() {
-            2 => {
-                item_rows.push(row!(
-                    column!(
-                        Image::new(remainder[0].icon.handle.clone()),
-                        button(text(remainder[0].name.clone()))
-                            .on_press(Message::ClickedItem(remainder[0].clone()))
-                    ),
-                    column!(
-                        Image::new(remainder[1].icon.handle.clone()),
-                        button(text(remainder[1].name.clone()))
-                            .on_press(Message::ClickedItem(remainder[1].clone()))
-                    ),
-                ));
-            }
-            1 => {
-                item_rows.push(row!(column!(
-                    Image::new(remainder[0].icon.handle.clone()),
-                    button(text(remainder[0].name.clone()))
-                        .on_press(Message::ClickedItem(remainder[0].clone()))
-                )));
-            }
-            0 => {}
-            _ => unreachable!(),
-        }
         let item_col = item_rows
             .into_iter()
             .fold(column!(), |col, row| col.push(row));
@@ -531,11 +510,11 @@ fn main() {
 
     // set up directories
     let dir = DIR.get_or_init(|| ProjectDirs::from("", "Sharif Haason", "TFT_Notebook").unwrap());
-    let cache_dir = CACHE_DIR.get_or_init(|| {
+    CACHE_DIR.get_or_init(|| {
         fs::create_dir_all(dir.cache_dir()).unwrap();
         dir.cache_dir().to_path_buf()
     });
-    let data_dir = DATA_DIR.get_or_init(|| {
+    DATA_DIR.get_or_init(|| {
         fs::create_dir_all(dir.data_dir()).unwrap();
         dir.data_dir().to_path_buf()
     });
