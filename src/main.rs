@@ -450,7 +450,12 @@ impl Sandbox for Model {
                 .map(|a| {
                     column!(
                         Image::new(a.icon.handle.clone()),
-                        button(text(a.name.clone())).on_press(Message::ClickedItem(a))
+                        row!(
+                            button(text(a.name.clone())).on_press(Message::ClickedItem(a.clone())),
+                            button(text("-"))
+                                .on_press(Message::ClickedItemRemove(a))
+                                .style(iced::theme::Button::Destructive)
+                        )
                     )
                     .into()
                 })
