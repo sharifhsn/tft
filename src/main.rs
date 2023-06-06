@@ -19,210 +19,14 @@ use itertools::Itertools;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
-trait ImageHandleDefault {
-    fn default() -> Self;
-}
-
-impl ImageHandleDefault for image::Handle {
-    fn default() -> Self {
-        image::Handle::from_path(CACHE_DIR.get().unwrap().join("tft_item_unknown.png"))
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-struct Handle {
-    handle: image::Handle,
-    url: String,
-}
-
-impl Default for Handle {
-    fn default() -> Self {
-        Self {
-            handle: ImageHandleDefault::default(),
-            url: Default::default(),
-        }
-    }
-}
-
-impl Serialize for Handle {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.url)
-    }
-}
+use tft::serde_help::*;
+use tft::tft_data::*;
 
 const CDRAGON_URL: &str = "https://raw.communitydragon.org/latest/game/";
 
 static DIR: OnceLock<ProjectDirs> = OnceLock::new();
 static CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
-
-fn deserialize_image<'de, D>(deserializer: D) -> Result<Handle, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let opt: Option<String> = Option::deserialize(deserializer)?;
-    if opt.is_none() {
-        return Ok(Handle::default());
-    }
-    let s = opt
-        .unwrap()
-        .to_lowercase() // url needs to be lowercase
-        .replace("dds", "png") // replace dds file with png
-        .replace("tex", "png");
-    let mut url = String::from(CDRAGON_URL);
-    url.push_str(&s);
-
-    let path: Vec<&str> = url.split('/').collect();
-    let file_name = path.last().unwrap();
-
-    let cache_dir = CACHE_DIR.get().unwrap();
-
-    let cache_path = cache_dir.join(file_name);
-
-    let image = if !Path::exists(&cache_dir.join(path.last().unwrap())) {
-        let mut buf: Vec<u8> = vec![];
-        ureq::get(&url)
-            .call()
-            .unwrap()
-            .into_reader()
-            .read_to_end(&mut buf)
-            .unwrap();
-
-        let img_mem = img::load_from_memory(&buf).unwrap();
-
-        // dbg!(img_mem.height(), img_mem.width());
-        // dbg!(&url);
-
-        let img_mem = if img_mem.width() > 128 {
-            img_mem.resize(128, 128, img::imageops::FilterType::CatmullRom)
-        } else {
-            img_mem
-        };
-
-        // dbg!(img_mem.height(), img_mem.width());
-
-        img_mem.save(cache_path).unwrap();
-        // fs::write(cache_path, &img_mem).unwrap();
-
-        println!("{} has been cached", file_name);
-        image::Handle::from_memory(img_mem.as_bytes().to_owned())
-    } else {
-        image::Handle::from_path(cache_path)
-    };
-
-    Ok(Handle { handle: image, url })
-}
-
-fn deserialize_null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
-where
-    T: Default + Deserialize<'de>,
-    D: Deserializer<'de>,
-{
-    let opt = Option::deserialize(deserializer)?;
-    Ok(opt.unwrap_or_default())
-}
-
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Item {
-    api_name: String,
-    associated_traits: Vec<String>,
-    composition: Vec<String>,
-    #[serde(deserialize_with = "deserialize_null_default")]
-    desc: String,
-    effects: Value,
-    from: Option<Value>, // always None
-    #[serde(deserialize_with = "deserialize_image")]
-    icon: Handle,
-    id: Option<Value>, // always None
-    incompatible_traits: Vec<String>,
-    #[serde(deserialize_with = "deserialize_null_default")]
-    name: String,
-    unique: bool,
-}
-
-impl Display for Item {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
-    }
-}
-
-struct ItemsDisplay(Vec<Item>);
-
-impl Display for ItemsDisplay {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.0.is_empty() {
-            return write!(f, "no items");
-        }
-        let mut comma_separated = String::new();
-
-        for item in &self.0[0..self.0.len() - 1] {
-            comma_separated.push_str(&item.to_string());
-            comma_separated.push_str(", ");
-        }
-
-        comma_separated.push_str(&self.0[self.0.len() - 1].to_string());
-        write!(f, "{}", comma_separated)
-    }
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-struct Variable {
-    #[serde(deserialize_with = "deserialize_null_default")]
-    name: String,
-    #[serde(deserialize_with = "deserialize_null_default")]
-    value: Vec<f64>,
-}
-
-#[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Ability {
-    #[serde(deserialize_with = "deserialize_null_default")]
-    desc: String,
-    #[serde(deserialize_with = "deserialize_image")]
-    icon: Handle,
-    #[serde(deserialize_with = "deserialize_null_default")]
-    name: String,
-    variables: Vec<Variable>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Stats {
-    armor: Option<f64>,
-    attack_speed: Option<f64>,
-    crit_chance: Option<f64>,
-    crit_multiplier: f64,
-    damage: Option<f64>,
-    hp: Option<f64>,
-    initial_mana: f64,
-    magic_resist: Option<f64>,
-    mana: f64,
-    range: f64,
-}
-
-#[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Champion {
-    ability: Ability,
-    api_name: String,
-    cost: u8,
-    #[serde(deserialize_with = "deserialize_image")]
-    square_icon: Handle,
-    #[serde(deserialize_with = "deserialize_null_default")]
-    name: String,
-    stats: Stats,
-    traits: Vec<String>,
-}
-
-impl Display for Champion {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
-    }
-}
 
 #[derive(Debug, Default)]
 enum Screen {
@@ -261,6 +65,14 @@ struct ChampionState {
 struct ComponentState {
     component: Item,
     count: usize,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub enum SortChampMethod {
+    #[default]
+    Alphabetical,
+    Cost,
+    Trait,
 }
 
 impl Sandbox for Model {
@@ -434,6 +246,8 @@ impl Sandbox for Model {
     fn view(&self) -> Element<Message> {
         match self.screen {
             Screen::CharacterBuilder => {
+                let champs_clone = self.champs.clone();
+                champs_clone.sort_by(|a, b| {});
                 let chunks = self.champs.clone().into_iter().chunks(3);
                 let mut rows = vec![];
                 // let mut rows = column!(row!(Image::new(image::Handle::default())));
