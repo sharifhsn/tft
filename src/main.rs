@@ -270,16 +270,16 @@ enum Screen {
 
 #[derive(Debug, Clone)]
 enum Message {
-    ClickedChampion(ChampionState),
+    ClickedChampion(String),
     ClickedItem(Item),
     ClickedSave,
 }
 
 struct Model {
     screen: Screen,
-    champs: Arc<Vec<ChampionState>>,
+    champs: Vec<ChampionState>,
     items: Vec<Item>,
-    focused_champion: Option<ChampionState>,
+    focused_champion: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, Clone, Serialize)]
@@ -350,28 +350,26 @@ impl Sandbox for Model {
             .collect();
         // println!("{components:#?}");
 
-        let champ_state = Arc::new(
-            champs
-                .into_iter()
-                .map(|champ| {
-                    let data_dir = DATA_DIR.get().unwrap();
-                    let path = "champ_info.json";
-                    if let Ok(s) = fs::read_to_string(data_dir.join(path)) {
-                        let x: Vec<ChampionState> = serde_json::from_str(&s).unwrap();
-                        let y: Vec<ChampionState> = x
-                            .into_iter()
-                            .filter(|champ_state| champ_state.champ.name == champ.name)
-                            .collect();
-                        y[0].clone()
-                    } else {
-                        ChampionState {
-                            champ,
-                            items: vec![],
-                        }
+        let champ_state = champs
+            .into_iter()
+            .map(|champ| {
+                let data_dir = DATA_DIR.get().unwrap();
+                let path = "champ_info.json";
+                if let Ok(s) = fs::read_to_string(data_dir.join(path)) {
+                    let x: Vec<ChampionState> = serde_json::from_str(&s).unwrap();
+                    let y: Vec<ChampionState> = x
+                        .into_iter()
+                        .filter(|champ_state| champ_state.champ.name == champ.name)
+                        .collect();
+                    y[0].clone()
+                } else {
+                    ChampionState {
+                        champ,
+                        items: vec![],
                     }
-                })
-                .collect(),
-        );
+                }
+            })
+            .collect();
         // let x = pane_grid::State::
         // let (items, _) = pane_grid::State::new(Item::default());
         Model {
@@ -388,19 +386,24 @@ impl Sandbox for Model {
 
     fn update(&mut self, message: Message) {
         match message {
-            Message::ClickedChampion(pane) => {
-                println!("new focused champion is {}", pane.champ);
-                self.focused_champion = Some(pane);
+            Message::ClickedChampion(name) => {
+                println!("new focused champion is {}", name);
+                self.focused_champion = Some(name);
             }
             Message::ClickedItem(item) => {
-                if let Some(ref mut champ) = self.focused_champion {
-                    println!("{} got added to {}", item, champ.champ);
+                if let Some(ref champ) = self.focused_champion {
+                    println!("{} got added to {}", item, champ);
+                    let champ = self
+                        .champs
+                        .iter_mut()
+                        .find(|champ_state| &champ_state.champ.name == champ)
+                        .unwrap();
                     champ.items.push(item);
                 }
             }
             Message::ClickedSave => {
                 let data_dir = DATA_DIR.get().unwrap();
-                let s = serde_json::to_string(&Arc::into_inner(self.champs).unwrap()).unwrap();
+                let s = serde_json::to_string(&self.champs).unwrap();
                 fs::write(data_dir.join("champ_info.json"), s).unwrap();
             }
         }
@@ -417,51 +420,13 @@ impl Sandbox for Model {
                 .map(|a| {
                     column!(
                         Image::new(a.champ.square_icon.handle.clone()),
-                        button(text(a.champ.name.clone())).on_press(Message::ClickedChampion(a))
+                        button(text(a.champ.name.clone()))
+                            .on_press(Message::ClickedChampion(a.champ.name.clone()))
                     )
                     .into()
                 })
                 .collect::<Vec<_>>()));
-            // rows.push(row!(
-            //     column!(
-            //         Image::new(a.champ.square_icon.handle.clone()),
-            //         button(text(a.champ.name.clone())).on_press(Message::ClickedChampion(a))
-            //     ),
-            //     column!(
-            //         Image::new(b.champ.square_icon.handle.clone()),
-            //         button(text(b.champ.name.clone())).on_press(Message::ClickedChampion(b))
-            //     ),
-            //     column!(
-            //         Image::new(c.champ.square_icon.handle.clone()),
-            //         button(text(c.champ.name.clone())).on_press(Message::ClickedChampion(c))
-            //     ),
-            // ));
         }
-        // let remainder = chunks.into_buffer().collect_vec();
-        // match remainder.len() {
-        //     2 => {
-        //         rows.push(row!(
-        //             column!(
-        //                 Image::new(remainder[0].champ.square_icon.handle.clone()),
-        //                 button(text(remainder[0].champ.name.clone()))
-        //                     .on_press(Message::ClickedChampion(remainder[0].clone()))
-        //             ),
-        //             column!(
-        //                 Image::new(remainder[1].champ.square_icon.handle.clone()),
-        //                 button(text(remainder[1].champ.name.clone()))
-        //                     .on_press(Message::ClickedChampion(remainder[1].clone()))
-        //             ),
-        //         ));
-        //     }
-        //     1 => {
-        //         rows.push(row!(column!(
-        //             Image::new(remainder[0].champ.square_icon.handle.clone()),
-        //             button(text(remainder[0].champ.name.clone()))
-        //                 .on_press(Message::ClickedChampion(remainder[0].clone()))
-        //         )));
-        //     }
-        //     _ => unreachable!(),
-        // }
         let champion_col = rows.into_iter().fold(column!(), |col, row| col.push(row));
 
         let item_chunks = self.items.chunks_exact(3);
@@ -522,7 +487,14 @@ impl Sandbox for Model {
             scrollable(item_col),
             column!(
                 text(match self.focused_champion.clone() {
-                    Some(champ) => format!("{}: {}", champ.champ, ItemsDisplay(champ.items)),
+                    Some(champ) => {
+                        let champ = self
+                            .champs
+                            .iter()
+                            .find(|champ_state| champ_state.champ.name == champ)
+                            .unwrap();
+                        format!("{}: {}", champ.champ, ItemsDisplay(champ.items.clone()))
+                    }
                     None => String::from("No champion selected"),
                 }),
                 button(text("Save")).on_press(Message::ClickedSave)
@@ -531,6 +503,25 @@ impl Sandbox for Model {
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
+    }
+
+    fn theme(&self) -> Theme {
+        Theme::default()
+    }
+
+    fn style(&self) -> theme::Application {
+        theme::Application::default()
+    }
+
+    fn scale_factor(&self) -> f64 {
+        1.0
+    }
+
+    fn run(settings: Settings<()>) -> Result<(), iced::Error>
+    where
+        Self: 'static + Sized,
+    {
+        <Self as iced::Application>::run(settings)
     }
 }
 
