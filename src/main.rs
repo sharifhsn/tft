@@ -1,6 +1,6 @@
 #![feature(drain_filter)]
 #![feature(impl_trait_projections)]
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::fs;
 use std::io::BufReader;
@@ -20,7 +20,7 @@ use iced::{
     Alignment, Color, Command, Element, Event, Length, Sandbox, Settings, Size, Subscription,
 };
 
-use itertools::Itertools;
+use itertools::{izip, Itertools};
 
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
@@ -271,8 +271,11 @@ enum Screen {
 #[derive(Debug, Clone)]
 enum Message {
     ClickedChampion(String),
+    ClickedComponentAdd(Item),
+    ClickedComponentSub(Item),
     ClickedItem(Item),
     ClickedItemRemove(Item),
+    ClearItems(String),
     ClickedSave,
     ChangeScreen,
 }
@@ -281,6 +284,7 @@ struct Model {
     screen: Screen,
     champs: Vec<ChampionState>,
     items: Vec<Item>,
+    components: Vec<ComponentState>,
     focused_champion: Option<String>,
 }
 
@@ -288,6 +292,12 @@ struct Model {
 struct ChampionState {
     champ: Champion,
     items: Vec<Item>,
+}
+
+#[derive(Debug, Default, Deserialize, Clone, Serialize)]
+struct ComponentState {
+    component: Item,
+    count: usize,
 }
 
 impl Sandbox for Model {
@@ -339,15 +349,18 @@ impl Sandbox for Model {
                 set.insert(component.clone());
             }
         }
-        let all_items: Vec<Item> =
-            serde_json::from_value(obj.get("items").unwrap().clone()).unwrap();
-        let components: Vec<&Item> = set
+        let components: Vec<ComponentState> = set
             .into_iter()
             .map(|component_api_name| {
-                all_items
-                    .iter()
-                    .filter(|item| item.api_name == component_api_name)
-                    .collect::<Vec<&Item>>()[0]
+                let all_items: Vec<Item> =
+                    serde_json::from_value(obj.get("items").unwrap().clone()).unwrap();
+                ComponentState {
+                    component: all_items
+                        .into_iter()
+                        .find(|item| item.api_name == component_api_name)
+                        .unwrap(),
+                    count: 0,
+                }
             })
             .collect();
         // println!("{components:#?}");
@@ -378,6 +391,7 @@ impl Sandbox for Model {
             screen: Screen::default(),
             champs: champ_state,
             items,
+            components,
             focused_champion: None,
         }
     }
@@ -427,6 +441,30 @@ impl Sandbox for Model {
                     Screen::ItemDeterminer => Screen::CharacterBuilder,
                 };
             }
+            Message::ClickedComponentAdd(component) => {
+                let component: &mut ComponentState = self
+                    .components
+                    .iter_mut()
+                    .find(|component_state| component_state.component.name == component.name)
+                    .unwrap();
+                component.count += 1;
+            }
+            Message::ClickedComponentSub(component) => {
+                let component: &mut ComponentState = self
+                    .components
+                    .iter_mut()
+                    .find(|component_state| component_state.component.name == component.name)
+                    .unwrap();
+                component.count = component.count.saturating_sub(1);
+            }
+            Message::ClearItems(champ) => {
+                let champ = self
+                    .champs
+                    .iter_mut()
+                    .find(|champ_state| champ_state.champ.name == champ)
+                    .unwrap();
+                champ.items.clear();
+            }
         }
     }
 
@@ -443,7 +481,10 @@ impl Sandbox for Model {
                             column!(
                                 Image::new(a.champ.square_icon.handle.clone()),
                                 button(text(a.champ.name.clone()))
-                                    .on_press(Message::ClickedChampion(a.champ.name))
+                                    .on_press(Message::ClickedChampion(a.champ.name.clone())),
+                                button(text("Clear"))
+                                    .on_press(Message::ClearItems(a.champ.name))
+                                    .style(iced::theme::Button::Destructive)
                             )
                             .into()
                         })
@@ -500,7 +541,94 @@ impl Sandbox for Model {
                 .into()
             }
             Screen::ItemDeterminer => {
-                let chunks = self.champs.clone().into_iter().chunks(3);
+                let item_chunks = self.components.clone().into_iter().chunks(3);
+                let mut item_rows = vec![];
+                for item_chunk in &item_chunks {
+                    item_rows.push(row(item_chunk
+                        .into_iter()
+                        .map(|a| {
+                            column!(
+                                Image::new(a.component.icon.handle.clone()),
+                                row!(
+                                    text(a.component.name.clone()),
+                                    button(text("+")).on_press(Message::ClickedComponentAdd(
+                                        a.component.clone()
+                                    )),
+                                    text(a.count),
+                                    button(text("-"))
+                                        .on_press(Message::ClickedComponentSub(a.component))
+                                        .style(iced::theme::Button::Destructive)
+                                )
+                            )
+                            .into()
+                        })
+                        .collect::<Vec<_>>()))
+                }
+
+                let item_col = item_rows
+                    .into_iter()
+                    .fold(column!(), |col, row| col.push(row));
+
+                // now show the champions that like these items
+                let mut sorted_champs = self.champs.clone();
+                sorted_champs.sort_by(|a, b| {
+                    let a_items: Vec<String> = a
+                        .items
+                        .iter()
+                        .flat_map(|item| item.composition.clone())
+                        .collect();
+                    let b_items: Vec<String> = b
+                        .items
+                        .iter()
+                        .flat_map(|item| item.composition.clone())
+                        .collect();
+                    let a_map = a_items.iter().fold(HashMap::new(), |mut acc, c| {
+                        *acc.entry(c).or_insert(0usize) += 1;
+                        acc
+                    });
+                    let b_map = b_items.iter().fold(HashMap::new(), |mut acc, c| {
+                        *acc.entry(c).or_insert(0usize) += 1;
+                        acc
+                    });
+
+                    let comp_map = self.components.iter().fold(HashMap::new(), |mut acc, c| {
+                        acc.insert(&c.component.api_name, c.count);
+                        acc
+                    });
+
+                    let mut a_total = 0;
+                    let mut b_total = 0;
+
+                    for (comp_name, comp_count) in comp_map.iter() {
+                        for (a_name, a_count) in a_map.clone() {
+                            if comp_name == &a_name {
+                                a_total += if *comp_count > a_count {
+                                    a_count
+                                } else {
+                                    *comp_count
+                                };
+                            }
+                        }
+                    }
+                    for (comp_name, comp_count) in comp_map {
+                        for (b_name, b_count) in b_map.clone() {
+                            if comp_name == b_name {
+                                b_total += if comp_count > b_count {
+                                    b_count
+                                } else {
+                                    comp_count
+                                };
+                            }
+                        }
+                    }
+                    println!(
+                        "{} has {}, {} has {}",
+                        a.champ.name, a_total, b.champ.name, b_total
+                    );
+                    b_total.cmp(&a_total)
+                });
+
+                let chunks = sorted_champs.into_iter().chunks(3);
                 let mut rows = vec![];
                 // let mut rows = column!(row!(Image::new(image::Handle::default())));
                 for chunk in &chunks {
@@ -509,8 +637,7 @@ impl Sandbox for Model {
                         .map(|a| {
                             column!(
                                 Image::new(a.champ.square_icon.handle.clone()),
-                                button(text(a.champ.name.clone()))
-                                    .on_press(Message::ClickedChampion(a.champ.name))
+                                text(a.champ.name)
                             )
                             .into()
                         })
@@ -518,10 +645,14 @@ impl Sandbox for Model {
                 }
                 let champion_col = rows.into_iter().fold(column!(), |col, row| col.push(row));
 
-                container(row!(scrollable(champion_col),))
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .into()
+                container(row!(
+                    item_col,
+                    scrollable(champion_col),
+                    button(text("Go to Character Builder")).on_press(Message::ChangeScreen)
+                ))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
             }
         }
     }
