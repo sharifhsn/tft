@@ -1,28 +1,22 @@
 #![windows_subsystem = "windows"]
 #![feature(drain_filter)]
 use std::collections::{HashMap, HashSet};
-use std::fmt::Display;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use directories::ProjectDirs;
 
-use ::image as img;
-
 use iced::theme::{self, Theme};
-use iced::widget::{button, column, container, image, row, scrollable, text, Image};
+use iced::widget::{button, column, container, row, scrollable, text, Image};
 use iced::{Element, Length, Sandbox, Settings};
 
 use itertools::Itertools;
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use tft::serde_help::*;
 use tft::tft_data::*;
-
-const CDRAGON_URL: &str = "https://raw.communitydragon.org/latest/game/";
 
 static DIR: OnceLock<ProjectDirs> = OnceLock::new();
 static CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
@@ -247,7 +241,7 @@ impl Sandbox for Model {
         match self.screen {
             Screen::CharacterBuilder => {
                 let champs_clone = self.champs.clone();
-                champs_clone.sort_by(|a, b| {});
+                //champs_clone.sort_by(|a, b| {});
                 let chunks = self.champs.clone().into_iter().chunks(3);
                 let mut rows = vec![];
                 // let mut rows = column!(row!(Image::new(image::Handle::default())));

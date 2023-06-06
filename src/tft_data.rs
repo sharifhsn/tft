@@ -4,7 +4,7 @@ use directories::ProjectDirs;
 
 use iced::widget::image;
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::serde_help::*;
@@ -52,19 +52,19 @@ impl Serialize for Handle {
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Item {
-    api_name: String,
+    pub api_name: String,
     associated_traits: Vec<String>,
-    composition: Vec<String>,
+    pub composition: Vec<String>,
     #[serde(deserialize_with = "deserialize_null_default")]
     desc: String,
     effects: Value,
     from: Option<Value>, // always None
     #[serde(deserialize_with = "deserialize_image")]
-    icon: Handle,
+    pub icon: Handle,
     id: Option<Value>, // always None
     incompatible_traits: Vec<String>,
     #[serde(deserialize_with = "deserialize_null_default")]
-    name: String,
+    pub name: String,
     unique: bool,
 }
 
@@ -74,7 +74,7 @@ impl Display for Item {
     }
 }
 
-pub struct ItemsDisplay(Vec<Item>);
+pub struct ItemsDisplay(pub Vec<Item>);
 
 impl Display for ItemsDisplay {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -107,7 +107,7 @@ pub struct Ability {
     #[serde(deserialize_with = "deserialize_null_default")]
     desc: String,
     #[serde(deserialize_with = "deserialize_image")]
-    icon: Handle,
+    pub icon: Handle,
     #[serde(deserialize_with = "deserialize_null_default")]
     name: String,
     variables: Vec<Variable>,
@@ -132,14 +132,14 @@ pub struct Stats {
 #[serde(rename_all = "camelCase")]
 pub struct Champion {
     ability: Ability,
-    api_name: String,
-    cost: u8,
+    pub api_name: String,
+    pub cost: u8,
     #[serde(deserialize_with = "deserialize_image")]
-    square_icon: Handle,
+    pub square_icon: Handle,
     #[serde(deserialize_with = "deserialize_null_default")]
-    name: String,
+    pub name: String,
     stats: Stats,
-    traits: Vec<String>,
+    pub traits: Vec<String>,
 }
 
 impl Display for Champion {
