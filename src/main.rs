@@ -263,8 +263,8 @@ const PANE_ID_COLOR_FOCUSED: Color = Color::from_rgb(
 
 #[derive(Debug, Default)]
 enum Screen {
-    CharacterBuilder,
     #[default]
+    CharacterBuilder,
     ItemDeterminer,
 }
 
@@ -274,6 +274,7 @@ enum Message {
     ClickedItem(Item),
     ClickedItemRemove(Item),
     ClickedSave,
+    ChangeScreen,
 }
 
 struct Model {
@@ -420,73 +421,109 @@ impl Sandbox for Model {
                 let s = serde_json::to_string(&self.champs).unwrap();
                 fs::write(data_dir.join("champ_info.json"), s).unwrap();
             }
+            Message::ChangeScreen => {
+                self.screen = match self.screen {
+                    Screen::CharacterBuilder => Screen::ItemDeterminer,
+                    Screen::ItemDeterminer => Screen::CharacterBuilder,
+                };
+            }
         }
     }
 
     fn view(&self) -> Element<Message> {
-        let chunks = self.champs.clone().into_iter().chunks(3);
-        let mut rows = vec![];
-        // let mut rows = column!(row!(Image::new(image::Handle::default())));
-        for chunk in &chunks {
-            rows.push(row(chunk
-                .into_iter()
-                .map(|a| {
+        match self.screen {
+            Screen::CharacterBuilder => {
+                let chunks = self.champs.clone().into_iter().chunks(3);
+                let mut rows = vec![];
+                // let mut rows = column!(row!(Image::new(image::Handle::default())));
+                for chunk in &chunks {
+                    rows.push(row(chunk
+                        .into_iter()
+                        .map(|a| {
+                            column!(
+                                Image::new(a.champ.square_icon.handle.clone()),
+                                button(text(a.champ.name.clone()))
+                                    .on_press(Message::ClickedChampion(a.champ.name))
+                            )
+                            .into()
+                        })
+                        .collect::<Vec<_>>()));
+                }
+                let champion_col = rows.into_iter().fold(column!(), |col, row| col.push(row));
+
+                let item_chunks = self.items.clone().into_iter().chunks(3);
+                let mut item_rows = vec![];
+                for item_chunk in &item_chunks {
+                    item_rows.push(row(item_chunk
+                        .into_iter()
+                        .map(|a| {
+                            column!(
+                                Image::new(a.icon.handle.clone()),
+                                row!(
+                                    button(text(a.name.clone()))
+                                        .on_press(Message::ClickedItem(a.clone())),
+                                    button(text("-"))
+                                        .on_press(Message::ClickedItemRemove(a))
+                                        .style(iced::theme::Button::Destructive)
+                                )
+                            )
+                            .into()
+                        })
+                        .collect::<Vec<_>>()))
+                }
+
+                let item_col = item_rows
+                    .into_iter()
+                    .fold(column!(), |col, row| col.push(row));
+
+                container(row!(
+                    scrollable(champion_col),
+                    scrollable(item_col),
                     column!(
-                        Image::new(a.champ.square_icon.handle.clone()),
-                        button(text(a.champ.name.clone()))
-                            .on_press(Message::ClickedChampion(a.champ.name))
+                        text(match self.focused_champion.clone() {
+                            Some(champ) => {
+                                let champ = self
+                                    .champs
+                                    .iter()
+                                    .find(|champ_state| champ_state.champ.name == champ)
+                                    .unwrap();
+                                format!("{}: {}", champ.champ, ItemsDisplay(champ.items.clone()))
+                            }
+                            None => String::from("No champion selected"),
+                        }),
+                        button(text("Save")).on_press(Message::ClickedSave),
+                        button(text("Go to Item Determiner")).on_press(Message::ChangeScreen),
                     )
+                ))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
+            }
+            Screen::ItemDeterminer => {
+                let chunks = self.champs.clone().into_iter().chunks(3);
+                let mut rows = vec![];
+                // let mut rows = column!(row!(Image::new(image::Handle::default())));
+                for chunk in &chunks {
+                    rows.push(row(chunk
+                        .into_iter()
+                        .map(|a| {
+                            column!(
+                                Image::new(a.champ.square_icon.handle.clone()),
+                                button(text(a.champ.name.clone()))
+                                    .on_press(Message::ClickedChampion(a.champ.name))
+                            )
+                            .into()
+                        })
+                        .collect::<Vec<_>>()));
+                }
+                let champion_col = rows.into_iter().fold(column!(), |col, row| col.push(row));
+
+                container(row!(scrollable(champion_col),))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
                     .into()
-                })
-                .collect::<Vec<_>>()));
+            }
         }
-        let champion_col = rows.into_iter().fold(column!(), |col, row| col.push(row));
-
-        let item_chunks = self.items.clone().into_iter().chunks(3);
-        let mut item_rows = vec![];
-        for item_chunk in &item_chunks {
-            item_rows.push(row(item_chunk
-                .into_iter()
-                .map(|a| {
-                    column!(
-                        Image::new(a.icon.handle.clone()),
-                        row!(
-                            button(text(a.name.clone())).on_press(Message::ClickedItem(a.clone())),
-                            button(text("-"))
-                                .on_press(Message::ClickedItemRemove(a))
-                                .style(iced::theme::Button::Destructive)
-                        )
-                    )
-                    .into()
-                })
-                .collect::<Vec<_>>()))
-        }
-
-        let item_col = item_rows
-            .into_iter()
-            .fold(column!(), |col, row| col.push(row));
-
-        container(row!(
-            scrollable(champion_col),
-            scrollable(item_col),
-            column!(
-                text(match self.focused_champion.clone() {
-                    Some(champ) => {
-                        let champ = self
-                            .champs
-                            .iter()
-                            .find(|champ_state| champ_state.champ.name == champ)
-                            .unwrap();
-                        format!("{}: {}", champ.champ, ItemsDisplay(champ.items.clone()))
-                    }
-                    None => String::from("No champion selected"),
-                }),
-                button(text("Save")).on_press(Message::ClickedSave)
-            )
-        ))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
     }
 
     fn theme(&self) -> Theme {
