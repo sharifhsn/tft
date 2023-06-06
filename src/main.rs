@@ -1,3 +1,4 @@
+#![windows_subsystem = "windows"]
 #![feature(drain_filter)]
 #![feature(impl_trait_projections)]
 use std::collections::{HashMap, HashSet};
@@ -621,10 +622,6 @@ impl Sandbox for Model {
                             }
                         }
                     }
-                    println!(
-                        "{} has {}, {} has {}",
-                        a.champ.name, a_total, b.champ.name, b_total
-                    );
                     b_total.cmp(&a_total)
                 });
 
