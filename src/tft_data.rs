@@ -21,7 +21,20 @@ trait ImageHandleDefault {
 
 impl ImageHandleDefault for image::Handle {
     fn default() -> Self {
-        image::Handle::from_path(CACHE_DIR.get().unwrap().join("tft_item_unknown.png"))
+        image::Handle::from_path(
+            CACHE_DIR
+                .get_or_init(|| {
+                    std::fs::create_dir_all(
+                        DIR.get_or_init(|| {
+                            ProjectDirs::from("", "Sharif Haason", "TFT_Notebook").unwrap()
+                        })
+                        .cache_dir(),
+                    )
+                    .unwrap();
+                    DIR.get().unwrap().cache_dir().to_path_buf()
+                })
+                .join("tft_item_unknown.png"),
+        )
     }
 }
 

@@ -38,7 +38,11 @@ where
     let path: Vec<&str> = url.split('/').collect();
     let file_name = path.last().unwrap();
 
-    let cache_dir = CACHE_DIR.get().unwrap();
+    let dir = DIR.get_or_init(|| ProjectDirs::from("", "Sharif Haason", "TFT_Notebook").unwrap());
+    let cache_dir = CACHE_DIR.get_or_init(|| {
+        std::fs::create_dir_all(dir.cache_dir()).unwrap();
+        dir.cache_dir().to_path_buf()
+    });
 
     let cache_path = cache_dir.join(file_name);
 

@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 use directories::ProjectDirs;
 
 use iced::theme::{self, Theme};
-use iced::widget::{button, column, container, row, scrollable, text, Image};
+use iced::widget::{button, column, container, pick_list, row, scrollable, text, Image};
 use iced::{Element, Length, Sandbox, Settings};
 
 use itertools::Itertools;
@@ -39,6 +39,7 @@ enum Message {
     ClearItems(String),
     ClickedSave,
     ChangeScreen,
+    ChangeSortMethod(SortChampMethod),
 }
 
 struct Model {
@@ -47,6 +48,7 @@ struct Model {
     items: Vec<Item>,
     components: Vec<ComponentState>,
     focused_champion: Option<String>,
+    curr_sort_method: SortChampMethod,
 }
 
 #[derive(Debug, Default, Deserialize, Clone, Serialize)]
@@ -61,12 +63,22 @@ struct ComponentState {
     count: usize,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub enum SortChampMethod {
     #[default]
     Alphabetical,
     Cost,
     Trait,
+}
+
+impl ToString for SortChampMethod {
+    fn to_string(&self) -> String {
+        match self {
+            SortChampMethod::Alphabetical => String::from("Alphabetical"),
+            SortChampMethod::Cost => String::from("By Cost"),
+            SortChampMethod::Trait => String::from("By Trait"),
+        }
+    }
 }
 
 impl Sandbox for Model {
@@ -162,6 +174,7 @@ impl Sandbox for Model {
             items,
             components,
             focused_champion: None,
+            curr_sort_method: SortChampMethod::default(),
         }
     }
 
@@ -234,15 +247,22 @@ impl Sandbox for Model {
                     .unwrap();
                 champ.items.clear();
             }
+            Message::ChangeSortMethod(method) => {
+                self.curr_sort_method = method;
+            }
         }
     }
 
     fn view(&self) -> Element<Message> {
         match self.screen {
             Screen::CharacterBuilder => {
-                let champs_clone = self.champs.clone();
-                //champs_clone.sort_by(|a, b| {});
-                let chunks = self.champs.clone().into_iter().chunks(3);
+                let mut champs_clone = self.champs.clone();
+                champs_clone.sort_by(|a, b| match self.curr_sort_method {
+                    SortChampMethod::Alphabetical => (a.champ.name).cmp(&b.champ.name),
+                    SortChampMethod::Cost => (a.champ.cost).cmp(&b.champ.cost),
+                    SortChampMethod::Trait => (a.champ.traits).cmp(&b.champ.traits),
+                });
+                let chunks = champs_clone.into_iter().chunks(3);
                 let mut rows = vec![];
                 // let mut rows = column!(row!(Image::new(image::Handle::default())));
                 for chunk in &chunks {
@@ -261,7 +281,18 @@ impl Sandbox for Model {
                         })
                         .collect::<Vec<_>>()));
                 }
-                let champion_col = rows.into_iter().fold(column!(), |col, row| col.push(row));
+                let champion_col = rows.into_iter().fold(
+                    column!(pick_list(
+                        vec![
+                            SortChampMethod::Alphabetical,
+                            SortChampMethod::Cost,
+                            SortChampMethod::Trait
+                        ],
+                        Some(self.curr_sort_method),
+                        |method| { Message::ChangeSortMethod(method) }
+                    )),
+                    |col, row| col.push(row),
+                );
 
                 let item_chunks = self.items.clone().into_iter().chunks(3);
                 let mut item_rows = vec![];
