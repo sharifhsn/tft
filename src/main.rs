@@ -1,32 +1,23 @@
 #![windows_subsystem = "windows"]
 #![feature(drain_filter)]
-#![feature(impl_trait_projections)]
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::fs;
-use std::io::BufReader;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use directories::ProjectDirs;
 
 use ::image as img;
 
 use iced::theme::{self, Theme};
-use iced::widget::{
-    button, column, container, image, pane_grid, responsive, row, scrollable, text, Container,
-    Image, PaneGrid,
-};
-use iced::{alignment, event, executor, keyboard, subscription, window};
-use iced::{
-    Alignment, Color, Command, Element, Event, Length, Sandbox, Settings, Size, Subscription,
-};
+use iced::widget::{button, column, container, image, row, scrollable, text, Image};
+use iced::{Element, Length, Sandbox, Settings};
 
-use itertools::{izip, Itertools};
+use itertools::Itertools;
 
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
-
-use tft::style;
 
 trait ImageHandleDefault {
     fn default() -> Self;
@@ -64,19 +55,9 @@ impl Serialize for Handle {
 
 const CDRAGON_URL: &str = "https://raw.communitydragon.org/latest/game/";
 
-use std::sync::{Arc, OnceLock};
 static DIR: OnceLock<ProjectDirs> = OnceLock::new();
 static CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
-
-fn initialize_dirs() {
-    // set up directories
-    let dir = ProjectDirs::from("", "Sharif Haason", "TFT_Notebook").unwrap();
-    fs::create_dir_all(dir.cache_dir()).unwrap();
-    fs::create_dir_all(dir.data_dir()).unwrap();
-}
-
-// SKIP DESERIALIZING ENTIRE STRUCT OF CHAMPION OR ITEM BASED ON CRITERIA
 
 fn deserialize_image<'de, D>(deserializer: D) -> Result<Handle, D::Error>
 where
@@ -97,15 +78,7 @@ where
     let path: Vec<&str> = url.split('/').collect();
     let file_name = path.last().unwrap();
 
-    let dir = DIR.get_or_init(|| ProjectDirs::from("", "Sharif Haason", "TFT_Notebook").unwrap());
-    let cache_dir = CACHE_DIR.get_or_init(|| {
-        fs::create_dir_all(dir.cache_dir()).unwrap();
-        dir.cache_dir().to_path_buf()
-    });
-    let data_dir = DATA_DIR.get_or_init(|| {
-        fs::create_dir_all(dir.data_dir()).unwrap();
-        dir.data_dir().to_path_buf()
-    });
+    let cache_dir = CACHE_DIR.get().unwrap();
 
     let cache_path = cache_dir.join(file_name);
 
@@ -250,17 +223,6 @@ impl Display for Champion {
         write!(f, "{}", self.name)
     }
 }
-
-const PANE_ID_COLOR_UNFOCUSED: Color = Color::from_rgb(
-    0xFF as f32 / 255.0,
-    0xC7 as f32 / 255.0,
-    0xC7 as f32 / 255.0,
-);
-const PANE_ID_COLOR_FOCUSED: Color = Color::from_rgb(
-    0xFF as f32 / 255.0,
-    0x47 as f32 / 255.0,
-    0x47 as f32 / 255.0,
-);
 
 #[derive(Debug, Default)]
 enum Screen {
@@ -695,9 +657,9 @@ fn main() {
 
     Model::run(Settings {
         antialiasing: true,
-        window: window::Settings {
-            position: window::Position::Centered,
-            ..window::Settings::default()
+        window: iced::window::Settings {
+            position: iced::window::Position::Centered,
+            ..iced::window::Settings::default()
         },
         ..Settings::default()
     })
