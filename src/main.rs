@@ -367,10 +367,21 @@ impl Sandbox for Model {
                         .collect::<Vec<_>>()))
                 }
 
-                let item_col = item_rows
+                let mut item_col = item_rows
                     .into_iter()
                     .fold(column!(), |col, row| col.push(row));
 
+                let comp_map = self.components.iter().fold(HashMap::new(), |mut acc, c| {
+                    acc.insert(&c.component.icon.handle, c.count);
+                    acc
+                });
+                let mut r = row!();
+                for (comp, count) in comp_map {
+                    for _ in 0..count {
+                        r = r.push(Image::new(comp.clone()));
+                    }
+                }
+                item_col = item_col.push(r);
                 // now show the champions that like these items
                 let mut sorted_champs = self.champs.clone();
                 sorted_champs.sort_by(|a, b| {

@@ -38,7 +38,7 @@ impl ImageHandleDefault for image::Handle {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Handle {
     pub handle: image::Handle,
     pub url: String,
