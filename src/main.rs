@@ -375,16 +375,32 @@ impl Sandbox for Model {
                     acc.insert(&c.component.icon.handle, c.count);
                     acc
                 });
-                let mut r = row!();
-                for (comp, count) in comp_map {
+                let mut comp_rows = vec![];
+                let mut v = vec![];
+                let mut max_count = 0;
+                // only show the first ten items that you have in v
+                'outer: for (comp, count) in comp_map {
                     for _ in 0..count {
-                        r = r.push(Image::new(comp.clone()));
+                        v.push(comp.clone());
+                        max_count += 1;
+                        if max_count >= 10 {
+                            break 'outer;
+                        }
                     }
                 }
-                item_col = item_col.push(r);
+                // push a new row for every chunk of components in v?
+                for comp_chunk in &v.clone().into_iter().chunks(3) {
+                    comp_rows.push(row(comp_chunk
+                        .into_iter()
+                        .map(|a| Image::new(a).into())
+                        .collect::<Vec<_>>()));
+                }
+                item_col = item_col.push(row!(column(
+                    comp_rows.into_iter().map(|x| x.into()).collect::<Vec<_>>(),
+                )));
                 // now show the champions that like these items
                 let mut sorted_champs = self.champs.clone();
-                sorted_champs.sort_by(|a, b| {
+                sorted_champs.sort_by(|a: &ChampionState, b| {
                     let a_items: Vec<String> = a
                         .items
                         .iter()
